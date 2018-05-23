@@ -1,4 +1,6 @@
-TOKEN = ['TOKEN']
+import os
+
+TOKEN = os.environ['TELEGRAM_TOKEN']
 DB_FILENAME = 'GamesData.db'
 
 levels = {
