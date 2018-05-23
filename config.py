@@ -1,4 +1,4 @@
-TOKEN = '538964463:AAGiXQoLHn_aT6vvsLbzMmImTK6m1O-_SH4'
+TOKEN = ['TOKEN']
 DB_FILENAME = 'GamesData.db'
 
 levels = {
