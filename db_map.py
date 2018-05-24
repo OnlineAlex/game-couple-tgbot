@@ -42,7 +42,7 @@ class Keyboards(Base):
 
 class Session:
     def __init__(self):
-            self.engine = create_engine('sqlite:///{}'.format(DB_FILENAME), echo=False)
+            self.engine = create_engine(['DATABASE_URL'], echo=True)
             self._create_new()
 
     def _delete_model(self, model_cls):

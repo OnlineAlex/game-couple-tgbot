@@ -58,7 +58,7 @@ class Level(db.Session):
     def get_level_record(self, level_name):
         session = self._get_session
         level_attr = getattr(db.Players, level_name)
-        record = session.query(level_attr).order_by(level_attr.desc()).scalar()
+        record = session.query(level_attr).order_by(level_attr.desc()).first()[0]
         return record
 
 
@@ -132,7 +132,7 @@ class Keyboard(Game):
     def get_kb(self, player_id):
         session = self._get_session
         game_cards = session.query(db.Emoji.emoji, db.Keyboards.btn_data) \
-            .join(db.Keyboards, db.Emoji.id == db.Keyboards.btn_text).filter_by(player_id=player_id).all()
+            .join(db.Keyboards, db.Emoji.id == db.Keyboards.btn_text).filter_by(player_id=player_id).order_by(db.Keyboards.id).all()
         level = session.query(db.Players).get(player_id).level
         num_columns = round(math.sqrt(level))
         count_try = session.query(db.Games.count_try).filter_by(id=player_id).scalar()
