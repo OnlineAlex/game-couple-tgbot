@@ -63,8 +63,9 @@ class Session:
     def _create_new(self):
         Base.metadata.create_all(self.engine)
         session = self._get_session
-        if not session.query(Emoji).get(1):
+        if not session.query(Emoji.id).first():
             self._add_emoji()
+        session.close()
 
     def _add_emoji(self):
         session = self._get_session

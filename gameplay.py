@@ -24,6 +24,7 @@ class Try(db.Session):
     def get_count_try(self, player_id):
         session = self._get_session
         count_try = session.query(db.Games).get(player_id).count_try
+        session.close()
         return count_try
 
 
@@ -31,11 +32,13 @@ class OpenCell(db.Session):
     def has_open_cell(self, player_id):
         session = self._get_session
         player = session.query(db.Games).get(player_id)
+        session.close()
         return bool(player.open_cell)
 
     def get_open_cell(self, player_id):
         session = self._get_session
         player = session.query(db.Games).get(player_id)
+        session.close()
         return player.open_cell
 
     def add_open_cell(self, player_id, cell_data):
@@ -53,12 +56,14 @@ class Level(db.Session):
     def get_level(self, player_id):
         session = self._get_session
         player_level = session.query(db.Players).get(player_id).level
+        session.close()
         return player_level
 
     def get_level_record(self, level_name):
         session = self._get_session
         level_attr = getattr(db.Players, level_name)
         record = session.query(level_attr).order_by(level_attr.desc()).first()[0]
+        session.close()
         return record
 
 
@@ -77,13 +82,14 @@ class Game(Level, Try, OpenCell):
         session = self._get_session
         buttons = session.query(db.Keyboards.btn_text).filter_by(player_id=player_id) \
             .filter(db.Keyboards.btn_data.in_([btn_data, open_cell_data])).all()
-
+        session.close()
         return bool(buttons[0] == buttons[1])
 
     def is_finish(self, player_id):
         session = self._get_session
         hidden_cells = session.query(db.Keyboards.btn_text) \
             .filter_by(player_id=player_id, btn_text=self.default_emj).first()
+        session.close()
         return not bool(hidden_cells)
 
     def get_player_in_table(self, player_id):
@@ -93,6 +99,7 @@ class Game(Level, Try, OpenCell):
         player_rating = player.top_easy_rating + player.top_normal_rating + player.top_hard_rating
         player_position = session.query(func.count(distinct(sum_ratings)) + 1) \
             .filter(sum_ratings > player_rating).scalar()
+        session.close()
         return player_position, player_rating, player.nickname
 
     def get_top_players(self, player_id):
@@ -101,18 +108,18 @@ class Game(Level, Try, OpenCell):
         top_players = session.query(db.Players.nickname, func.round(sum_ratings, 2))\
             .order_by(sum_ratings.desc()).limit(10).all()
         player_number, player_score, player_nickname = self.get_player_in_table(player_id)
-        if (player_nickname, player_score) in top_players:
-            return top_players
-        else:
-            position_player = session.query(func.count(distinct(sum_ratings))+1)\
+        if (player_nickname, player_score) not in top_players:
+            position_player = session.query(func.count(distinct(sum_ratings)) + 1) \
                 .filter(sum_ratings > player_score).scalar()
             top_players.append((player_nickname, player_score, position_player))
-            return top_players
+        session.close()
+        return top_players
 
     def has_nickname(self, nickname):
         session = self._get_session
         db_nickname = session.query(db.Players.nickname)\
             .filter(func.lower(db.Players.nickname) == func.lower(nickname)).first()
+        session.close()
         return bool(db_nickname)
 
 
@@ -137,12 +144,14 @@ class Keyboard(Game):
         num_columns = round(math.sqrt(level))
         count_try = session.query(db.Games.count_try).filter_by(id=player_id).scalar()
         kb = keyboards.get_game_kb(num_columns, game_cards, count_try)
+        session.close()
         return kb
 
     def cell_is_open(self, player_id, btn_data):
         session = self._get_session
         buttons = session.query(db.Keyboards.btn_text, db.Keyboards.hidden_text) \
             .filter_by(player_id=player_id, btn_data=btn_data).first()
+        session.close()
         return bool(buttons[0] == buttons[1])
 
     def show_cell(self, player_id, btn_data):
@@ -175,11 +184,14 @@ class Player(Game):
 
     def is_new_player(self, player_id):
         session = self._get_session
-        return not bool(session.query(db.Players).get(player_id))
+        player = session.query(db.Players).get(player_id)
+        session.close()
+        return not bool(player)
 
     def get_player(self, player_id):
         session = self._get_session
         player = session.query(db.Players).get(player_id)
+        session.close()
         return player
 
     def get_rating(self, player_id):
@@ -193,6 +205,7 @@ class Player(Game):
         session = self._get_session
         record = session.query(top_ratings[level]).select_from(db.Players) \
             .filter_by(id=player_id).first()[0]
+        session.close()
         return record
 
     def is_new_record(self, player_id):
