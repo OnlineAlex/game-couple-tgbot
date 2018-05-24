@@ -1,3 +1,5 @@
+import os
+
 from sqlalchemy import Column, Integer, String, create_engine, Float, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
@@ -42,7 +44,7 @@ class Keyboards(Base):
 
 class Session:
     def __init__(self):
-            self.engine = create_engine('DATABASE_URL', echo=True)
+            self.engine = create_engine(os.environ['DATABASE_URL'], echo=True)
             self._create_new()
 
     def _delete_model(self, model_cls):
