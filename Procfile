@@ -1,1 +1,0 @@
-bot: python3 couple_bot.py
