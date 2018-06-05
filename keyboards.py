@@ -5,8 +5,8 @@ from aiogram.utils.emoji import emojize
 def get_game_kb(width_row, cards, player_try):
     keyboard = InlineKeyboardMarkup(row_width=width_row)
     count_btn = InlineKeyboardButton(emojize(f':stopwatch: {player_try}'), callback_data='counter')
-    for text, data in cards:
-        keyboard.insert(InlineKeyboardButton(emojize(text), callback_data=data))
+    for index, emoji in enumerate(cards):
+        keyboard.insert(InlineKeyboardButton(emojize(emoji), callback_data='emj{}'.format(index)))
 
     keyboard.insert(count_btn)
     keyboard.insert(InlineKeyboardButton(emojize('Заново :repeat:'), callback_data='restart'))

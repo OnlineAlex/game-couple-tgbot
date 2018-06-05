@@ -1,8 +1,6 @@
-import os
-
-TOKEN = os.environ['TELEGRAM_TOKEN']
+TOKEN = '11111111:AAAAAAAAAAAAAAAAAAA_AAAAAAAA'  # bot's token
 DB_FILENAME = 'GamesData.db'
-
+developer_id = 111111111  # you id for feedback from users
 levels = {
     'Простой :chicken:': 16,
     'Средний :monkey:': 24,

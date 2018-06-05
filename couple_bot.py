@@ -2,7 +2,7 @@ import logging
 import asyncio
 from aiogram import Bot
 from aiogram.dispatcher import Dispatcher
-from aiogram.utils import executor, exceptions
+from aiogram.utils import executor
 from aiogram.types import ContentType, Message, CallbackQuery, ParseMode
 from aiogram.utils.emoji import demojize
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
@@ -10,7 +10,7 @@ from aiogram.contrib.middlewares.logging import LoggingMiddleware
 
 import config
 import keyboards as kb
-from gameplay import Player, Keyboard, Game
+from gameplay import Player, GameBoard, Game
 from utils import States
 from messages import MESSAGES
 
@@ -18,36 +18,39 @@ from messages import MESSAGES
 logging.basicConfig(format=u'%(filename)+13s [ LINE:%(lineno)-4s] %(levelname)-8s [%(asctime)s] %(message)s',
                     level=logging.DEBUG)
 
+
 bot = Bot(token=config.TOKEN)
 dp = Dispatcher(bot, storage=MemoryStorage())
 dp.middleware.setup(LoggingMiddleware())
-game = Game()
 player = Player()
-keyboard = Keyboard()
+game_board = GameBoard()
+game = Game()
 
 
 async def is_valid_game_callback(callback):
     if not callback.data or not callback.data.startswith('emj'):
         return False
-    if keyboard.cell_is_open(callback.from_user.id, callback.data):
+    if game_board.cell_is_open(callback.from_user.id, callback.data[3:]):
         await bot.answer_callback_query(callback.id, 'Уже открыта')
+        return False
+    if not game_board.players_has_game(callback.from_user.id):
         return False
     return True
 
 
 async def finish_game_msg(player_id):
-    rating = player.get_rating(player_id)
-    if player.is_new_record(player_id):
-        player.add_new_record(player_id)
+    rating = game_board.get_rating(player_id)
+    if rating > player.get_player_record(player_id, game_board.get_level(player_id)):
+        player.add_new_record(player_id, rating, game_board.get_level(player_id))
         await bot.send_message(player_id, MESSAGES['finish_success_msg'].format(
-            count_try=game.get_count_try(player_id),
+            count_try=game_board.get_try(player_id),
             rating=rating
         ), reply_markup=kb.finish)
     else:
         await bot.send_message(player_id, MESSAGES['finish_fail_msg'].format(
-            count_try=game.get_count_try(player_id),
+            count_try=game_board.get_try(player_id),
             rating=rating,
-            top_rating=player.get_player_record(player_id)
+            top_rating=player.get_player_record(player_id, game_board.get_level(player_id))
         ), reply_markup=kb.finish)
 
     state = dp.current_state(user=player_id)
@@ -109,9 +112,11 @@ async def process_clear_result_command(message: Message):
 @dp.message_handler(state='*', commands=['developer'])
 async def process_developer_command(message: Message):
     await message.reply(
-        'Принимаю пожелания/жалобы/предложения в ЛС @cashncarry',
+        'Принимаю пожелания/жалобы/предложения. Напиши боту, он мне передаст.',
         reply=False
     )
+    state = dp.current_state(user=message.from_user.id)
+    await state.set_state(States.DEV_MESSAGE_RU[0])
 
 
 @dp.message_handler(
@@ -136,9 +141,9 @@ async def process_faq_command(message: Message):
 async def process_change_level_command(message: Message):
     await  message.reply(
         MESSAGES['choice_level'].format(
-            easy=player.get_level_record('top_easy_rating'),
-            normal=player.get_level_record('top_normal_rating'),
-            hard=player.get_level_record('top_hard_rating')
+            easy=game.get_level_record('top_easy_rating'),
+            normal=game.get_level_record('top_normal_rating'),
+            hard=game.get_level_record('top_hard_rating')
         ),
         reply_markup=kb.level,
         reply=False
@@ -148,13 +153,13 @@ async def process_change_level_command(message: Message):
 @dp.message_handler(state='*', func=lambda message: demojize(message.text) in config.levels.keys())
 async def start_new_game(message: Message):
     player_id = message.from_user.id
+    game_board.delete_game(player_id)
     level = config.levels[demojize(message.text)]
-    keyboard.create_kb(player_id, level)
-    game.new_game(player_id)
+    game_board.add_new_game(player_id, level)
     await bot.send_message(
         player_id,
         MESSAGES['game_board_msg'],
-        reply_markup=keyboard.get_kb(player_id)
+        reply_markup=game_board.get_keyboard(player_id)
     )
     state = dp.current_state(user=player_id)
     await state.set_state(States.GAME_RU_ON[0])
@@ -176,6 +181,17 @@ async def confirmation_nickname(message: Message):
             MESSAGES['confirm_nickname'].format(nickname=new_nickname),
             reply_markup=kb.change_nickname
         )
+
+
+@dp.message_handler(state=States.DEV_MESSAGE_RU)
+async def process_task_to_dev(message: Message):
+    await bot.send_message(
+        config.developer_id,
+        '{}\n{}'.format(message.text, message.from_user.username or message.from_user.id)
+    )
+    state = dp.current_state(user=message.from_user.id)
+    await state.set_state(States.MENU_RU[0])
+    await message.reply('Сообщение отправлено')
 
 
 @dp.message_handler(
@@ -224,34 +240,33 @@ async def unknown_type_message(message: Message):
 
 @dp.callback_query_handler(state=States.GAME_RU_ON, func=is_valid_game_callback)
 async def process_callback_btn(callback_query: CallbackQuery):
+    cell_id = int(callback_query.data[3:])
     state = dp.current_state(user=callback_query.from_user.id)
-
-    keyboard.show_cell(callback_query.from_user.id, callback_query.data)
-    game.add_try(callback_query.from_user.id)
+    game_board.open_cell(callback_query.from_user.id, cell_id)
+    game_board.add_try(callback_query.from_user.id)
     await bot.edit_message_reply_markup(
         callback_query.from_user.id,
         callback_query.message.message_id,
-        reply_markup=keyboard.get_kb(callback_query.from_user.id)
+        reply_markup=game_board.get_keyboard(callback_query.from_user.id)
     )
 
-    if not game.has_open_cell(callback_query.from_user.id):
-        game.add_open_cell(callback_query.from_user.id, callback_query.data)
-    elif game.have_couple(callback_query.from_user.id, callback_query.data):
+    if not game_board.has_open_cell(callback_query.from_user.id):
+        game_board.add_open_cell(callback_query.from_user.id, cell_id)
+    elif game_board.have_couple(callback_query.from_user.id, cell_id):
         await state.set_state(States.GAME_RU_PAUSED[0])
-        game.del_open_cell(callback_query.from_user.id)
-        if game.is_finish(callback_query.from_user.id):
+        game_board.del_open_cell(callback_query.from_user.id)
+        if game_board.is_finish(callback_query.from_user.id):
             return await finish_game_msg(callback_query.from_user.id)
     else:
         await state.set_state(States.GAME_RU_PAUSED[0])
-        await asyncio.sleep(0.8)
-        keyboard.hide_cells(callback_query.from_user.id, callback_query.data)
-        game.del_open_cell(callback_query.from_user.id)
+        await asyncio.sleep(0.7)
+        game_board.hide_cells(callback_query.from_user.id, cell_id)
+        game_board.del_open_cell(callback_query.from_user.id)
         await bot.edit_message_reply_markup(
             callback_query.from_user.id,
             callback_query.message.message_id,
-            reply_markup=keyboard.get_kb(callback_query.from_user.id)
+            reply_markup=game_board.get_keyboard(callback_query.from_user.id)
         )
-
     await state.set_state(States.GAME_RU_ON[0])
 
 
@@ -270,26 +285,25 @@ async def process_game_finished(callback_query: CallbackQuery):
     func=lambda c: c.data and c.data == 'restart'
 )
 async def process_restart_in_game(callback_query: CallbackQuery):
-    keyboard.create_kb(callback_query.from_user.id, player.get_level(callback_query.from_user.id))
-    game.new_game(callback_query.from_user.id)
-    try:
-        await bot.edit_message_reply_markup(
+    level = game_board.get_level(callback_query.from_user.id)
+    game_board.delete_game(callback_query.from_user.id)
+    game_board.add_new_game(callback_query.from_user.id, level)
+    await bot.edit_message_reply_markup(
             callback_query.from_user.id,
             callback_query.message.message_id,
-            reply_markup=keyboard.get_kb(callback_query.from_user.id)
+            reply_markup=game_board.get_keyboard(callback_query.from_user.id)
         )
-    except exceptions.MessageNotModified:
-        await bot.answer_callback_query(callback_query.id, 'Новая игра')
 
 
 @dp.callback_query_handler(state='*', func=lambda c: c.data and c.data == 'restart')
 async def process_start_new_game(callback_query: CallbackQuery):
-    keyboard.create_kb(callback_query.from_user.id, player.get_level(callback_query.from_user.id))
-    game.new_game(callback_query.from_user.id)
+    level = game_board.get_level(callback_query.from_user.id)
+    game_board.delete_game(callback_query.from_user.id)
+    game_board.add_new_game(callback_query.from_user.id, level)
     await bot.send_message(
         callback_query.from_user.id,
         'Найди одинаковые emojii\nИзменить уровень - /change_level',
-        reply_markup=keyboard.get_kb(callback_query.from_user.id)
+        reply_markup=game_board.get_keyboard(callback_query.from_user.id)
     )
 
     state = dp.current_state(user=callback_query.from_user.id)
